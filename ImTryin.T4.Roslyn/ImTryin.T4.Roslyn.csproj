@@ -9,6 +9,11 @@
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <DevelopmentDependency>true</DevelopmentDependency>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageProjectUrl>https://github.com/imlex/ImTryin.T4</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/imlex/ImTryin.T4</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Code Generation T4 Text Templates Roslyn</PackageTags>
+    <Description>Boilerplate for using Roslyn within T4 text templates. You can generate code depending on code of current project. See https://github.com/imlex/ImTryin.T4/blob/master/ImTryin.T4.Roslyn.EfTest/TestDbContext.generated.tt for example.</Description>
   </PropertyGroup>
 
   <ItemGroup>
