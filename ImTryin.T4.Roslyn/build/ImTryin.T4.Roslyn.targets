@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ImTryinT4RoslynPackageDirectory>$(MSBuildThisFileDirectory)..</ImTryinT4RoslynPackageDirectory>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TransformOnBuild Condition="'$(TransformOnBuild)' == ''">True</TransformOnBuild>
+    <TransformOutOfDateOnly>False</TransformOutOfDateOnly>
+  </PropertyGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\v$(VisualStudioVersion)\TextTemplating\Microsoft.TextTemplating.targets" />
+  <ItemGroup>
+    <T4ParameterValues Include="ImTryinT4RoslynPackageDirectory">
+      <Value>$(ImTryinT4RoslynPackageDirectory)</Value>
+      <Visible>False</Visible>
+    </T4ParameterValues>
+  </ItemGroup>
+</Project>

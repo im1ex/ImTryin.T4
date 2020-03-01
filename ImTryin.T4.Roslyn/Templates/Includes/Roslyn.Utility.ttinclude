@@ -1,0 +1,175 @@
+﻿<#@ template debug="false" hostspecific="true" language="C#" #>
+<#@ assembly name="netstandard" #>
+<#@ assembly name="System.Core" #>
+<#@ assembly name="System.Runtime" #>
+<#@ assembly name="System.Text.Encoding" #>
+<#@ assembly name="System.Threading.Tasks" #>
+<#@ assembly name="$(ImTryinT4RoslynPackageDirectory)\Microsoft.CodeAnalysis.3.4.0.Merged\Microsoft.CodeAnalysis.Workspaces.dll" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Collections.Immutable" #>
+<#@ import namespace="Microsoft.CodeAnalysis" #>
+<#@ import namespace="Microsoft.CodeAnalysis.CSharp" #>
+<#@ import namespace="Microsoft.CodeAnalysis.CSharp.Syntax" #>
+<#@ import namespace="Microsoft.CodeAnalysis.FindSymbols" #>
+<#@ import namespace="Microsoft.CodeAnalysis.MSBuild" #>
+<#@ import namespace="Microsoft.VisualStudio.TextTemplating" #>
+<#@ output extension=".cs" #>
+<#+
+
+    public static IEnumerable<T> Chain<T>(T start, Func<T, T> nextGetter, T breakValue = default(T))
+    {
+        while (!EqualityComparer<T>.Default.Equals(start, breakValue))
+        {
+            yield return start;
+
+            start = nextGetter(start);
+        }
+    }
+
+    public class DelegateEqualityComparer<T> : IEqualityComparer<T>
+    {
+        private readonly Func<T, T, bool> _equalityComparison;
+        private readonly Func<T, int> _hashCodeGetter;
+
+        public DelegateEqualityComparer(Func<T, T, bool> equalityComparison, Func<T, int> hashCodeGetter)
+        {
+            if (equalityComparison == null)
+                throw new ArgumentNullException(nameof(equalityComparison));
+            if (hashCodeGetter == null)
+                throw new ArgumentNullException(nameof(hashCodeGetter));
+
+            _equalityComparison = equalityComparison;
+            _hashCodeGetter = hashCodeGetter;
+        }
+
+        public bool Equals(T x, T y)
+        {
+            return _equalityComparison(x, y);
+        }
+
+        public int GetHashCode(T obj)
+        {
+            return _hashCodeGetter(obj);
+        }
+    }
+
+    public class CSharpHelper
+    {
+        private static readonly SymbolDisplayFormat PartialDeclarationFormat = new SymbolDisplayFormat(
+            kindOptions: SymbolDisplayKindOptions.IncludeTypeKeyword,
+            genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints | SymbolDisplayGenericsOptions.IncludeVariance);
+
+        public static string DeclarePartialType(INamedTypeSymbol typeSymbol)
+        {
+            return
+                SyntaxFacts.GetText(typeSymbol.DeclaredAccessibility) +
+                (typeSymbol.IsStatic ? " " + SyntaxFacts.GetText(SyntaxKind.StaticKeyword) : string.Empty) +
+                " partial " + typeSymbol.ToDisplayString(PartialDeclarationFormat);
+        }
+    }
+
+    public class CurrentProjectHelper : IDisposable
+    {
+        private readonly string _generatedFile;
+        private readonly string _associatedFile;
+
+        private MSBuildWorkspace _workspace;
+        private readonly Project _project;
+        private readonly Compilation _compilation;
+
+        public CurrentProjectHelper(ITextTemplatingEngineHost host)
+        {
+            _generatedFile = Path.ChangeExtension(host.TemplateFile, ".cs");
+            _associatedFile = Path.ChangeExtension(Path.ChangeExtension(host.TemplateFile, null), ".cs");
+
+            string currentDirectory = Path.GetDirectoryName(_generatedFile);
+            string projectFileName;
+            while (!File.Exists(projectFileName = Path.Combine(currentDirectory, Path.GetFileName(currentDirectory) + ".csproj")))
+                currentDirectory = Path.GetDirectoryName(currentDirectory);
+
+            _workspace = MSBuildWorkspace.Create();
+            _project = _workspace.OpenProjectAsync(projectFileName).Result;
+            _project = _project.RemoveDocument(_project.Documents.Single(x => x.FilePath.Equals(_generatedFile, StringComparison.InvariantCultureIgnoreCase)).Id);
+
+            _compilation = _project.GetCompilationAsync().Result;
+        }
+
+        public Project Project
+        {
+            get { return _project; }
+        }
+
+        public Compilation Compilation
+        {
+            get { return _compilation; }
+        }
+
+        public ISymbol GetDeclaredSymbol(MemberDeclarationSyntax memberDeclarationSyntax)
+        {
+            return _compilation.GetSemanticModel(memberDeclarationSyntax.SyntaxTree).GetDeclaredSymbol(memberDeclarationSyntax);
+        }
+
+        private static readonly SyntaxKind[] __stepInSyntaxKinds = {SyntaxKind.CompilationUnit, SyntaxKind.NamespaceDeclaration};
+
+        private bool _associatedTypeSymbolsQueried;
+        private List<INamedTypeSymbol> _associatedTypeSymbols;
+
+        public List<INamedTypeSymbol> AssociatedTypeSymbols
+        {
+            get
+            {
+                if (_workspace == null)
+                    throw new ObjectDisposedException(null);
+
+                if (!_associatedTypeSymbolsQueried)
+                {
+                    _associatedTypeSymbolsQueried = true;
+
+                    Document _associatedDocument = _project.Documents.SingleOrDefault(x => x.FilePath.Equals(_associatedFile, StringComparison.InvariantCultureIgnoreCase));
+                    if (_associatedDocument != null)
+                    {
+                        SyntaxNode syntaxRoot = _associatedDocument.GetSyntaxRootAsync().Result;
+
+                        if (syntaxRoot != null)
+                        {
+                            _associatedTypeSymbols = syntaxRoot.DescendantNodes(node => __stepInSyntaxKinds.Contains(node.Kind()))
+                                .OfType<TypeDeclarationSyntax>()
+                                .Select(x => _compilation.GetSemanticModel(x.SyntaxTree).GetDeclaredSymbol(x))
+                                .ToList();
+                        }
+                    }
+                }
+
+                return _associatedTypeSymbols;
+            }
+        }
+
+        public IEnumerable<INamedTypeSymbol> GetTypeSymbols()
+        {
+            if (_workspace == null)
+                throw new ObjectDisposedException(null);
+
+            return _compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type).OfType<INamedTypeSymbol>();
+        }
+
+        public IEnumerable<ReferencedSymbol> FindReferencesAsync(ISymbol symbol)
+        {
+            if (_workspace == null)
+                throw new ObjectDisposedException(null);
+
+            return SymbolFinder.FindReferencesAsync(symbol, _project.Solution).Result;
+        }
+
+        public void Dispose()
+        {
+            if (_workspace != null)
+            {
+                _workspace.Dispose();
+                _workspace = null;
+            }
+        }
+    }
+
+#>
