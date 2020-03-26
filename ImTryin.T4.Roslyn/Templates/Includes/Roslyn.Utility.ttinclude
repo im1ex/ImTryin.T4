@@ -70,96 +70,71 @@
         }
     }
 
-    public class CurrentProjectHelper : IDisposable
+    public class ProjectHelper : IDisposable
     {
-        private readonly string _generatedFile;
-        private readonly string _associatedFile;
-
         private MSBuildWorkspace _workspace;
         private readonly Project _project;
         private readonly Compilation _compilation;
 
-        public CurrentProjectHelper(ITextTemplatingEngineHost host)
+        public ProjectHelper(ITextTemplatingEngineHost host, string projectFileName, Func<Project, Project> updateProjectFunc = null)
         {
-            _generatedFile = Path.ChangeExtension(host.TemplateFile, ".cs");
-            _associatedFile = Path.ChangeExtension(Path.ChangeExtension(host.TemplateFile, null), ".cs");
-
-            string currentDirectory = Path.GetDirectoryName(_generatedFile);
-            string projectFileName;
-            while (!File.Exists(projectFileName = Path.Combine(currentDirectory, Path.GetFileName(currentDirectory) + ".csproj")))
-                currentDirectory = Path.GetDirectoryName(currentDirectory);
+            if (!Path.IsPathRooted(projectFileName))
+                projectFileName = Path.Combine(Path.GetDirectoryName(host.TemplateFile), projectFileName);
 
             _workspace = MSBuildWorkspace.Create();
             _project = _workspace.OpenProjectAsync(projectFileName).Result;
-            _project = _project.RemoveDocument(_project.Documents.Single(x => x.FilePath.Equals(_generatedFile, StringComparison.InvariantCultureIgnoreCase)).Id);
+
+            if (updateProjectFunc != null)
+                _project = updateProjectFunc(_project);
 
             _compilation = _project.GetCompilationAsync().Result;
         }
 
         public Project Project
         {
-            get { return _project; }
+            get
+            {
+                ThrowIfDisposed();
+
+                return _project;
+            }
         }
 
         public Compilation Compilation
         {
-            get { return _compilation; }
+            get
+            {
+                ThrowIfDisposed();
+
+                return _compilation;
+            }
         }
 
         public ISymbol GetDeclaredSymbol(MemberDeclarationSyntax memberDeclarationSyntax)
         {
+            ThrowIfDisposed();
+
             return _compilation.GetSemanticModel(memberDeclarationSyntax.SyntaxTree).GetDeclaredSymbol(memberDeclarationSyntax);
-        }
-
-        private static readonly SyntaxKind[] __stepInSyntaxKinds = {SyntaxKind.CompilationUnit, SyntaxKind.NamespaceDeclaration};
-
-        private bool _associatedTypeSymbolsQueried;
-        private List<INamedTypeSymbol> _associatedTypeSymbols;
-
-        public List<INamedTypeSymbol> AssociatedTypeSymbols
-        {
-            get
-            {
-                if (_workspace == null)
-                    throw new ObjectDisposedException(null);
-
-                if (!_associatedTypeSymbolsQueried)
-                {
-                    _associatedTypeSymbolsQueried = true;
-
-                    Document _associatedDocument = _project.Documents.SingleOrDefault(x => x.FilePath.Equals(_associatedFile, StringComparison.InvariantCultureIgnoreCase));
-                    if (_associatedDocument != null)
-                    {
-                        SyntaxNode syntaxRoot = _associatedDocument.GetSyntaxRootAsync().Result;
-
-                        if (syntaxRoot != null)
-                        {
-                            _associatedTypeSymbols = syntaxRoot.DescendantNodes(node => __stepInSyntaxKinds.Contains(node.Kind()))
-                                .OfType<TypeDeclarationSyntax>()
-                                .Select(x => _compilation.GetSemanticModel(x.SyntaxTree).GetDeclaredSymbol(x))
-                                .ToList();
-                        }
-                    }
-                }
-
-                return _associatedTypeSymbols;
-            }
         }
 
         public IEnumerable<INamedTypeSymbol> GetTypeSymbols()
         {
-            if (_workspace == null)
-                throw new ObjectDisposedException(null);
+            ThrowIfDisposed();
 
             return _compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type).OfType<INamedTypeSymbol>();
         }
 
         public IEnumerable<ReferencedSymbol> FindReferencesAsync(ISymbol symbol)
         {
-            if (_workspace == null)
-                throw new ObjectDisposedException(null);
+            ThrowIfDisposed();
 
             return SymbolFinder.FindReferencesAsync(symbol, _project.Solution).Result;
+        }
+
+        protected void ThrowIfDisposed()
+        {
+            if (_workspace == null)
+                throw new ObjectDisposedException(null);
         }
 
         public void Dispose()
@@ -172,4 +147,64 @@
         }
     }
 
+    public class CurrentProjectHelper : ProjectHelper
+    {
+        public CurrentProjectHelper(ITextTemplatingEngineHost host) : base(host, GetProjectFileName(host), p => RemoveGeneratedFile(host, p))
+        {
+            _associatedFile = Path.ChangeExtension(Path.ChangeExtension(host.TemplateFile, null), ".cs");
+        }
+
+        private static string GetProjectFileName(ITextTemplatingEngineHost host)
+        {
+            string currentDirectory = Path.GetDirectoryName(host.TemplateFile);
+            string projectFileName;
+            while (!File.Exists(projectFileName = Path.Combine(currentDirectory, Path.GetFileName(currentDirectory) + ".csproj")))
+                currentDirectory = Path.GetDirectoryName(currentDirectory);
+
+            return projectFileName;
+        }
+
+        private static Project RemoveGeneratedFile(ITextTemplatingEngineHost host, Project project)
+        {
+            var generatedFile = Path.ChangeExtension(host.TemplateFile, ".cs");
+
+            return project.RemoveDocument(project.Documents.Single(x => x.FilePath.Equals(generatedFile, StringComparison.InvariantCultureIgnoreCase)).Id);
+        }
+
+        private readonly string _associatedFile;
+
+        private static readonly SyntaxKind[] __stepInSyntaxKinds = {SyntaxKind.CompilationUnit, SyntaxKind.NamespaceDeclaration};
+
+        private bool _associatedTypeSymbolsQueried;
+        private List<INamedTypeSymbol> _associatedTypeSymbols;
+
+        public List<INamedTypeSymbol> AssociatedTypeSymbols
+        {
+            get
+            {
+                ThrowIfDisposed();
+
+                if (!_associatedTypeSymbolsQueried)
+                {
+                    _associatedTypeSymbolsQueried = true;
+
+                    Document _associatedDocument = Project.Documents.SingleOrDefault(x => x.FilePath.Equals(_associatedFile, StringComparison.InvariantCultureIgnoreCase));
+                    if (_associatedDocument != null)
+                    {
+                        SyntaxNode syntaxRoot = _associatedDocument.GetSyntaxRootAsync().Result;
+
+                        if (syntaxRoot != null)
+                        {
+                            _associatedTypeSymbols = syntaxRoot.DescendantNodes(node => __stepInSyntaxKinds.Contains(node.Kind()))
+                                .OfType<TypeDeclarationSyntax>()
+                                .Select(x => Compilation.GetSemanticModel(x.SyntaxTree).GetDeclaredSymbol(x))
+                                .ToList();
+                        }
+                    }
+                }
+
+                return _associatedTypeSymbols;
+            }
+        }
+    }
 #>

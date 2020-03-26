@@ -7,6 +7,8 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
+// ImTryin.T4.Roslyn.csproj documents:
+//   D:\Projects\ImTryin\ImTryin.T4\ImTryin.T4.Roslyn\obj\Debug\netstandard2.0\ImTryin.T4.Roslyn.AssemblyInfo.cs
 using Microsoft.EntityFrameworkCore;
 
 namespace ImTryin.T4.Roslyn.EfTest

@@ -15,6 +15,19 @@
         pluralizationService = PluralizationService.CreateService(CultureInfo.GetCultureInfo(1033));
     }
 
+    using (ProjectHelper projectHelper = new ProjectHelper(Host, "..\\ImTryin.T4.Roslyn\\ImTryin.T4.Roslyn.csproj"))
+    {
+#>
+// ImTryin.T4.Roslyn.csproj documents:
+<#
+        foreach (var document in projectHelper.Project.Documents)
+        {
+#>
+//   <#= document.FilePath #>
+<#
+        }
+    }
+
     using (CurrentProjectHelper currentProjectHelper = new CurrentProjectHelper(Host))
     {
         var entitySymbols = currentProjectHelper.GetTypeSymbols()
