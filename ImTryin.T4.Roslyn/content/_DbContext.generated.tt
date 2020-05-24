@@ -4,17 +4,6 @@
 <#@ import namespace="System.Data.Entity.Design.PluralizationServices" #>
 <#@ import namespace="System.Globalization" #>
 <#
-
-    PluralizationService pluralizationService;
-    try
-    {
-        pluralizationService = PluralizationService.CreateService(CultureInfo.CurrentCulture);
-    }
-    catch (NotImplementedException)
-    {
-        pluralizationService = PluralizationService.CreateService(CultureInfo.GetCultureInfo(1033));
-    }
-
     using (CurrentProjectHelper currentProjectHelper = new CurrentProjectHelper(Host))
     {
         var entitySymbols = currentProjectHelper.GetTypeSymbols()
@@ -74,7 +63,7 @@ namespace <#= currentProjectHelper.AssociatedTypeSymbols[0].ContainingNamespace 
             foreach (var entitySymbol in entitySymbols.Where(x => !x.IsAbstract))
             {
 #>
-        public DbSet<<#= entitySymbol #>> <#= pluralizationService.Pluralize(entitySymbol.Name) #> { get; set; }
+        public DbSet<<#= entitySymbol #>> <#= Pluralize(entitySymbol.Name) #> { get; set; }
 <#
             }
 #>
@@ -82,5 +71,30 @@ namespace <#= currentProjectHelper.AssociatedTypeSymbols[0].ContainingNamespace 
 }
 <#
         }
+    }
+#>
+<#+
+    private readonly PluralizationService _pluralizationService = PluralizationService.CreateService(CultureInfo.GetCultureInfo(1033));
+
+    private string Pluralize(string identifier)
+    {
+        var lastWord = identifier;
+        var prefix = string.Empty;
+
+        var foundUpper = false;
+
+        for (int i = identifier.Length - 1; i >= 0; i--)
+        {
+            if (char.IsUpper(identifier[i]))
+                foundUpper = true;
+            else if (foundUpper || identifier[i] == ' ')
+            {
+                prefix = identifier.Substring(0, i + 1);
+                lastWord = identifier.Substring(i + 1);
+                break;
+            }
+        }
+
+        return prefix + _pluralizationService.Pluralize(lastWord);
     }
 #>
