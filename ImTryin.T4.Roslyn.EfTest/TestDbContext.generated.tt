@@ -4,15 +4,27 @@
 <#@ import namespace="System.Data.Entity.Design.PluralizationServices" #>
 <#@ import namespace="System.Globalization" #>
 <#
-    using (ProjectHelper projectHelper = new ProjectHelper(Host, "..\\ImTryin.T4.Roslyn\\ImTryin.T4.Roslyn.csproj"))
+    try
     {
+        using (ProjectHelper projectHelper = new ProjectHelper(Host, "..\\ImTryin.T4.Roslyn\\ImTryin.T4.Roslyn.csproj"))
+        {
 #>
 // ImTryin.T4.Roslyn.csproj documents:
 <#
-        foreach (var document in projectHelper.Project.Documents)
-        {
+            foreach (var document in projectHelper.Project.Documents)
+            {
 #>
 //   <#= document.FilePath #>
+<#
+            }
+        }
+    }
+    catch (System.Reflection.ReflectionTypeLoadException ex)
+    {
+        foreach (var ex2 in ex.LoaderExceptions)
+        {
+#>
+//   <#= ex2 #>
 <#
         }
     }
@@ -45,19 +57,19 @@ namespace <#= entitySymbol.ContainingNamespace #>
     <#= CSharpHelper.DeclarePartialType(entitySymbol) #>
     {
 <#
-            var propertySymbols = entitySymbol.GetMembers().OfType<IPropertySymbol>().ToList();
-            foreach (var propertySymbol in propertySymbols
-                .Where(x => x.IsVirtual && (x.Type.OriginalDefinition.SpecialType != SpecialType.System_Collections_Generic_ICollection_T)))
-            {
-                string foreignKeyPropertyName = propertySymbol.Name + "Id";
-                if (propertySymbols.Any(x => x.Name == foreignKeyPropertyName))
-                    continue;
+    var propertySymbols = entitySymbol.GetMembers().OfType<IPropertySymbol>().ToList();
+    foreach (var propertySymbol in propertySymbols
+        .Where(x => x.IsVirtual && (x.Type.OriginalDefinition.SpecialType != SpecialType.System_Collections_Generic_ICollection_T)))
+    {
+        string foreignKeyPropertyName = propertySymbol.Name + "Id";
+        if (propertySymbols.Any(x => x.Name == foreignKeyPropertyName))
+            continue;
 
-                string optional = propertySymbol.GetAttributes().Any(x => x.AttributeClass.ToString() == "System.ComponentModel.DataAnnotations.RequiredAttribute") ? "" : "?";
+        string optional = propertySymbol.GetAttributes().Any(x => x.AttributeClass.ToString() == "System.ComponentModel.DataAnnotations.RequiredAttribute") ? "" : "?";
 #>
          public long<#= optional #> <#= foreignKeyPropertyName #> { get; set; }
 <#
-            }
+    }
 #>
     }
 }
@@ -73,12 +85,12 @@ namespace <#= currentProjectHelper.AssociatedTypeSymbols[0].ContainingNamespace 
     <#= CSharpHelper.DeclarePartialType(currentProjectHelper.AssociatedTypeSymbols[0]) #>
     {
 <#
-            foreach (var entitySymbol in entitySymbols.Where(x => !x.IsAbstract))
-            {
+    foreach (var entitySymbol in entitySymbols.Where(x => !x.IsAbstract))
+    {
 #>
         public DbSet<<#= entitySymbol #>> <#= Pluralize(entitySymbol.Name) #> { get; set; }
 <#
-            }
+    }
 #>
     }
 }
